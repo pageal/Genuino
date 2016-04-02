@@ -1,7 +1,8 @@
+#include <OneWire.h>
+
 //#include <IRremote.h>
 //#include <IRremoteInt.h>
 //#include <IRremoteTools.h>
-
 
 // sources:
 // - IR: https://arduino-info.wikispaces.com/IR-RemoteControl
@@ -20,38 +21,32 @@
 // 
 
 
-#include <time.h>
+//#include <time.h>
 
 //pins
 ////////////////////////////////////////////////////
 //H-BRIDGE
-//int OUT_PIN_HBRIHGE_INT1_MOT_A = 1;
-//int OUT_PIN_HBRIHGE_INT2_MOT_A = 2;
-//int OUT_PIN_HBRIHGE_INT3_MOT_B = 3;
-//int OUT_PIN_HBRIHGE_INT4_MOT_B = 4;
-//int OUT_PIN_HBRIHGE_EN_A = 9;
-//int OUT_PIN_HBRIHGE_EN_B = 10;
+int OUT_PIN_HBRIHGE_INT1_MOT_A = 2;
+int OUT_PIN_HBRIHGE_INT2_MOT_A = 3;
+int OUT_PIN_HBRIHGE_INT3_MOT_B = 4;  
+int OUT_PIN_HBRIHGE_INT4_MOT_B = 5;
+int OUT_PIN_HBRIHGE_EN_A = 6;
+int OUT_PIN_HBRIHGE_EN_B = 7;
+
 //Keyboard Controls:
-//
-// 1 -Motor 1 Left
-// 2 -Motor 1 Stop
-// 3 -Motor 1 Right
-//
-// 4 -Motor 2 Left
-// 5 -Motor 2 Stop
-// 6 -Motor 2 Right
+#define MOTOR_A_FWD 49 // '1' -Motor 1 forward
+#define MOTOR_A_STP 50 // '2' -Motor 1 stop
+#define MOTOR_A_BKW 51 // '3' -Motor 1 backward
 
-#define MOTOR_A_FWD 49
-#define MOTOR_A_STP 50
-#define MOTOR_A_BKW 51
+#define MOTOR_B_FWD 52 // '4' -Motor 2 forward
+#define MOTOR_B_STP 53 // '5' -Motor 2 stop
+#define MOTOR_B_BKW 54 // '6' -Motor 2 backward
 
-#define MOTOR_B_FWD 52
-#define MOTOR_B_STP 53
-#define MOTOR_B_BKW 54
-
+// motors
 #define MOTOR_A 0
 #define MOTOR_B 1
 
+// commands
 #define MOTOR_STP 1
 #define MOTOR_FWD 2
 #define MOTOR_BKW 3
@@ -68,64 +63,62 @@ typedef struct MOTOR T_MOTOR;
 
 T_MOTOR motors[2];
 
-int dir1PinA = 2;
-int dir2PinA = 3;
-int speedPinA = 9; // Needs to be a PWM pin to be able to control motor speed
-
-// Motor 2
-int dir1PinB = 4;
-int dir2PinB = 5;
-int speedPinB = 10; // Needs to be a PWM pin to be able to control motor speed
-////////////////////////////////////////////////////
-
 // XINDA IR 
 int INP_PIN_IR_RECV = 12;
 // INDICATION
 int OUT_PIN_BLINK_PIN = 13;
 
 
-
 //timeout vars
 bool status_led_high = false;
-int blink_timeout = 1000;
+int blink_timeout = 500;
 unsigned long t1 = 0;
 unsigned long t2 = 0;
 int cycle_time_sum = 0;
+
+void log_serial(char* msg)
+{
+  Serial.println(msg);
+}
 
 //IR 
 //IRrecv irrecv(INP_PIN_IR_RECV);
 //decode_results results;
 void motor_do(int motor_idx, int action)
 {
-motors[0].dir1Pin = 2;
-motors[0].dir2Pin = 3;
-motors[0].speedPin = 9;
-
-motors[1].dir1Pin = 4;
-motors[1].dir2Pin = 5;
-motors[1].speedPin = 10;
-
   T_MOTOR motor = motors[motor_idx]; 
+  char msg[20];
   switch(action)
   {
+//https://www.sparkfun.com/datasheets/Robotics/L298_H_Bridge.pdf
+//Turn-On and Turn-Off : Before to Turn-ON the Supply
+//Voltage and before to Turn it OFF, the Enable input
+//must be driven to the Low state.
+    
       case MOTOR_FWD: 
-        analogWrite(motor.speedPin, 0);
-        digitalWrite(motor.dir1Pin, LOW);
-        digitalWrite(motor.dir2Pin, HIGH);
-        analogWrite(motor.speedPin, 255);
-        break;
-      
-      case MOTOR_STP: // Motor 1 Stop (Freespin)
-        digitalWrite(motor.dir1Pin, LOW);
-        digitalWrite(motor.dir2Pin, LOW);
-        analogWrite(motor.speedPin, 0);
-        break;
-      
-      case MOTOR_BKW: // Motor 2 Reverse
-        analogWrite(motor.speedPin, 0);
         digitalWrite(motor.dir1Pin, HIGH);
         digitalWrite(motor.dir2Pin, LOW);
-        analogWrite(motor.speedPin, 255);
+        digitalWrite(motor.speedPin, HIGH);
+        //sprintf(msg, "motor%d FWD", motor_idx);
+        //Serial.println(msg);
+        break;
+      
+      case MOTOR_STP:
+        if(digitalRead(motor.dir1Pin)==LOW)
+          digitalWrite(motor.dir1Pin, HIGH);
+        if(digitalRead(motor.dir2Pin)==LOW)
+          digitalWrite(motor.dir2Pin, HIGH);
+        digitalWrite(motor.speedPin, 0);
+        //sprintf(msg, "motor%d STP", motor_idx);
+        //Serial.println(msg);
+       break;
+      
+      case MOTOR_BKW:
+        digitalWrite(motor.dir1Pin, LOW);
+        digitalWrite(motor.dir2Pin, HIGH);
+        digitalWrite(motor.speedPin, HIGH);
+        //sprintf(msg, "motor%d BKW", motor_idx);
+        //Serial.println(msg);
         break;
     }
 }
@@ -133,77 +126,67 @@ motors[1].speedPin = 10;
 // Motors
 void handle_motors() {
   // Check the Serial interface:
-  if (Serial.available() > 0) {
-    int inByte = Serial.read();
+  int inByte = 0;
+  if (Serial.available() > 0) 
+  {
+    inByte = Serial.read();
     char echo_input[20];
     //int speed; // Local variable
     sprintf(echo_input, "Echo: %d", inByte);
     Serial.println(echo_input); 
+  }
     
-    switch (inByte) {
-      
-      //______________Motor 1______________
-      
-      case MOTOR_A_FWD: // Motor 1 Forward
-        Serial.println("Motor 1 Forward"); // Prints out “Motor 1 Forward” on the serial monitor
-        motor_do(MOTOR_A, MOTOR_FWD);
-        break;
-      
-      case MOTOR_A_STP: // Motor 1 Stop (Freespin)
-        Serial.println("Motor 1 Stop");
-        motor_do(MOTOR_A, MOTOR_STP);
-        break;
-      
-      case MOTOR_A_BKW: // Motor 1 Reverse
-        Serial.println("Motor 1 Reverse");
-        motor_do(MOTOR_A, MOTOR_BKW);
-        break;
-      
-      //______________Motor 2______________
-      
-      case MOTOR_B_FWD: // Motor 2 Forward
-        motor_do(MOTOR_B, MOTOR_FWD);
-        Serial.println("Motor 2 Forward");
-        break;
-      
-      case MOTOR_B_STP: // Motor 1 Stop (Freespin)
-        motor_do(MOTOR_B, MOTOR_STP);
-        Serial.println("Motor 2 Stop");
-        break;
-      
-      case MOTOR_B_BKW: // Motor 2 Reverse
-        motor_do(MOTOR_B, MOTOR_BKW);
-        Serial.println("Motor 2 Reverse");
-        break;
-      
-      default:
-        Serial.println("Stop ALL");
-        // turn all the connections off if an unmapped key is pressed:
-        for (int thisPin = 2; thisPin < 11; thisPin++) {
-          digitalWrite(thisPin, LOW);
-        }
-    }
-  }// if (Serial.available() > 0)
+  switch (inByte) {
+    //______________Motor 1______________
+    case MOTOR_A_FWD: // Motor 1 Forward
+      motor_do(MOTOR_A, MOTOR_FWD);
+      break;
+    case MOTOR_A_STP: // Motor 1 Stop (Freespin)
+      motor_do(MOTOR_A, MOTOR_STP);
+      break;
+    case MOTOR_A_BKW: // Motor 1 Reverse
+      motor_do(MOTOR_A, MOTOR_BKW);
+      break;
+    
+    //______________Motor 2______________
+    case MOTOR_B_FWD: // Motor 2 Forward
+      motor_do(MOTOR_B, MOTOR_FWD);
+      break;
+    case MOTOR_B_STP: // Motor 1 Stop (Freespin)
+      motor_do(MOTOR_B, MOTOR_STP);
+      break;
+    case MOTOR_B_BKW: // Motor 2 Reverse
+      motor_do(MOTOR_B, MOTOR_BKW);
+      break;    
+  }
 }
+
+bool motors_stopped = false;
 
 // the setup function runs once when you press reset or power the board
 void setup() {
+ 
   // initialize digital pin 13 as an output.
   pinMode(OUT_PIN_BLINK_PIN, OUTPUT);
-//  pinMode(OUT_PIN_HBRIHGE_EN_A, OUTPUT);
-//  pinMode(OUT_PIN_HBRIHGE_EN_B, OUTPUT);
-//  pinMode(OUT_PIN_HBRIHGE_EN_B, OUTPUT);
 
   Serial.begin(9600);
+  motors[MOTOR_A].dir1Pin = OUT_PIN_HBRIHGE_INT1_MOT_A;
+  motors[MOTOR_A].dir2Pin = OUT_PIN_HBRIHGE_INT2_MOT_A;
+  motors[MOTOR_A].speedPin = OUT_PIN_HBRIHGE_EN_A;
+  
+  motors[MOTOR_B].dir1Pin = OUT_PIN_HBRIHGE_INT3_MOT_B;
+  motors[MOTOR_B].dir2Pin = OUT_PIN_HBRIHGE_INT4_MOT_B;
+  motors[MOTOR_B].speedPin = OUT_PIN_HBRIHGE_EN_B;
+
 //  irrecv.enableIRIn(); // Start the receiver}
 
   //Define L298N Dual H-Bridge Motor Controller Pins
-  pinMode(dir1PinA,OUTPUT);
-  pinMode(dir2PinA,OUTPUT);
-  pinMode(speedPinA,OUTPUT);
-  pinMode(dir1PinB,OUTPUT);
-  pinMode(dir2PinB,OUTPUT);
-  pinMode(speedPinB,OUTPUT);
+  pinMode(OUT_PIN_HBRIHGE_INT1_MOT_A,OUTPUT);
+  pinMode(OUT_PIN_HBRIHGE_INT2_MOT_A,OUTPUT);
+  pinMode(OUT_PIN_HBRIHGE_INT3_MOT_B,OUTPUT);
+  pinMode(OUT_PIN_HBRIHGE_INT4_MOT_B,OUTPUT);
+  pinMode(OUT_PIN_HBRIHGE_EN_A,OUTPUT);
+  pinMode(OUT_PIN_HBRIHGE_EN_B,OUTPUT);
 }
 
 unsigned long diff32(unsigned long a, unsigned long b)
@@ -243,12 +226,48 @@ void invert_status_led()
     }
   }
 }
+
+bool can_move()
+{
+  int ir_distance_head = analogRead(0);
+  //if (Serial.available() > 0)
+  //{
+  //  Serial.println(ir_distance_head); 
+  //}
+  if(ir_distance_head<200)
+    return true;
+  return false;
+}
+
+bool move()
+{
+      motor_do(MOTOR_A, MOTOR_FWD);
+      motor_do(MOTOR_B, MOTOR_FWD);
+}
+
 // the loop function runs over and over again forever
 void loop() {
+
+  if(motors_stopped == false)
+  {
+      motor_do(MOTOR_A, MOTOR_STP);
+      motor_do(MOTOR_B, MOTOR_STP);
+      motors_stopped = true;
+  }
+
 //  unsigned long ir_key = 0; 
   invert_status_led();
   //ir_key = get_ir_keypress();
   handle_motors();
-  delay(blink_timeout/100);              // wait for a second
+  delay(blink_timeout/10);              // wait for a second
   t2=millis();
+
+  if(can_move())
+  {   
+    move();
+  }else
+  {
+      motor_do(MOTOR_A, MOTOR_STP);
+      motor_do(MOTOR_B, MOTOR_STP);
+  }
 }
