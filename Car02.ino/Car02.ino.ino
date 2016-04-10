@@ -76,6 +76,11 @@ unsigned long t1 = 0;
 unsigned long t2 = 0;
 int cycle_time_sum = 0;
 
+// analog pins
+#define DIR_FWD 0
+#define DIR_RGT 1
+#define DIR_LFT 2
+
 void log_serial(char* msg)
 {
   Serial.println(msg);
@@ -227,9 +232,10 @@ void invert_status_led()
   }
 }
 
-bool can_move()
+
+bool can_move(int dir)
 {
-  int ir_distance_head = analogRead(0);
+  int ir_distance_head = analogRead(dir);
   //if (Serial.available() > 0)
   //{
   //  Serial.println(ir_distance_head); 
@@ -262,11 +268,14 @@ void loop() {
   delay(blink_timeout/10);              // wait for a second
   t2=millis();
 
-  if(can_move())
+  if(can_move(DIR_FWD) and can_move(DIR_RGT) and can_move(DIR_LFT))
   {   
     move();
   }else
   {
+      motor_do(MOTOR_A, MOTOR_BKW);
+      motor_do(MOTOR_B, MOTOR_BKW);
+      delay(200);
       motor_do(MOTOR_A, MOTOR_STP);
       motor_do(MOTOR_B, MOTOR_STP);
   }
